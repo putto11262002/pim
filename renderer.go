@@ -104,11 +104,8 @@ func (r *Renderer) Render(editor *Editor) error {
 	}
 
 	// Render the buffer
-	for line := range editor.buffer.Lines() {
-		for _, char := range line {
-			fmt.Fprint(r.writer, string(char))
-		}
-		fmt.Fprintln(r.writer) // Move to the next line after each line of text
+	for char := range editor.buffer.Runes() {
+		fmt.Fprint(r.writer, string(char))
 	}
 
 	// Move the cursor to the current position

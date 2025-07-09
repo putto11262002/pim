@@ -57,11 +57,13 @@ func (e *Editor) Execute(key keys.Key) error {
 		case keys.Esc:
 			e.SetMode(CommandMode)
 		case keys.Backspace:
-			e.buffer.DeleteChar()
+			e.buffer.DeleteRune()
 		case keys.Enter:
-			e.buffer.InsertNewLineBelow()
+			e.buffer.NewLine()
 		default:
-			e.buffer.InsertChars(key.Runes)
+			for _, c := range key.Runes {
+				e.buffer.InsertRune(c)
+			}
 		}
 	}
 
