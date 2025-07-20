@@ -41,7 +41,6 @@ func (e *Editor) SetMode(mode EditorMode) {
 func (e *Editor) Mode() EditorMode {
 	return e.mode
 }
-
 func (e *Editor) Execute(key keys.Key) error {
 	if e.mode == CommandMode {
 		switch key.Code {

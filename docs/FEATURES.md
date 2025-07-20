@@ -10,7 +10,7 @@ This document outlines the core features and functionalities for the initial rel
 
 ### 2. Scope
 
-The initial scope focuses on fundamental text editing, basic file operations, and a clear, intuitive terminal user interface. Advanced features like syntax highlighting, complex search/replace, or multi-buffer management are explicitly out of scope for this version but may be considered for future iterations.
+The initial scope focuses on fundamental text editing, basic file operations, and a clear, intuitive terminal user interface. The editor operates on a single buffer. Advanced features like syntax highlighting, complex search/replace, or multi-buffer management are explicitly out of scope for this version but may be considered for future iterations.
 
 ### 3. Core Features
 
@@ -34,7 +34,7 @@ The editor operates primarily in two distinct modes:
 
 - **Edit Mode Navigation:**
   - **Arrow Keys:** Move cursor left, right, up, and down. (To be implemented for full functionality)
-- **Command Mode Navigation (Vim-like):**
+- \*\*Command Mode Navigation (Vim-like):
   - `h`: Move cursor left.
   - `j`: Move cursor down.
   - `k`: Move cursor up.
@@ -89,4 +89,9 @@ The editor will support or consider the following text representation types for 
 #### 5.1. Current Limitations and Unimplemented Cases
 
 - **Large File Handling:** Currently, there is no specific strategy for handling large files; they are loaded entirely into memory.
-- **Binary File Support:** The editor does not fully handle binary files. Binary files are currently read-only, and invalid Unicode characters are replaced with a replacement Unicode character. Only UTF-8 encoding is supported.
+- **Binary File Support:** The editor does not fully handle binary files. Binary files are currently read-only, and invalid Unicode characters are replaced with a replacement Unicode character.
+
+### 6. Text Encoding
+
+Currently, the Pim TUI text editor exclusively supports UTF-8 text encoding. While this simplifies initial development, future versions may include auto-detection of text encodings and support for a wider range of character encodings to enhance compatibility with various file types.
+

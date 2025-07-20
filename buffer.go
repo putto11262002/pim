@@ -2,7 +2,6 @@ package pim
 
 import (
 	"fmt"
-	"iter"
 )
 
 var (
@@ -35,148 +34,185 @@ type Buffer struct {
 	//   This simplifies line lookups (e.g., line N's start is lineIndex[N]).
 	// - The length of 'lineIndex' will be equal to the total number of lines in the buffer.
 	lineIndex []int
-	// cursorLine represents the current line number within the buffer.
-	// It is 0-indexed.
-	cursorLine int
-	// cursorCol represents the current character (rune) offset from the beginning of the current line.
-	// It is 0-indexed.
-	cursorCol int
 	// size is the current number of runes (characters) present in the 'buffer'.
 	// This explicitly tracks the logical length of the text, distinct from the
 	// underlying 'buffer' slice's capacity.
 	len int
+
+	point     int
+	pointLine int
+	name      string
 }
 
 func NewBuffer() *Buffer {
 	return &Buffer{
-		buffer:    make([]rune, 1024),
-		lineIndex: []int{0},
-	}
-}
-
-func (buffer *Buffer) lookupRCIdx(row, col int) int {
-	return buffer.lookupLineIdx(row) + col
-}
-
-func (b *Buffer) cursorIdx() int {
-	return b.lookupRCIdx(b.cursorLine, b.cursorCol)
-}
-
-func (buffer *Buffer) numLines() int {
-	return len(buffer.lineIndex)
-}
-
-func (buffer *Buffer) lookupLineIdx(n int) int {
-	if n < 0 || n >= len(buffer.lineIndex) {
-		panic(fmt.Sprintf("index out of range: %d", n))
+		lineIndex: []int{0}, // Initialize with the first line starting at index 0
 	}
 
-	return buffer.lineIndex[n]
 }
 
-// insertRune insert the character to the current cursor positions.
-// All the characters to the right of the original cursor position are shifted to the right by one position.
-// insertRune only modify the state of the buffer, it does not update the cursor position or the line index.
-func (buffer *Buffer) insertRune(char rune) {
-	// Allocate more space if needed
-	if len(buffer.buffer) < buffer.len+1 {
-		buffer.buffer = make([]rune, len(buffer.buffer)*2)
-		copy(buffer.buffer, buffer.buffer[:buffer.len])
-	}
-
-	// 1. Shift over the characters to the right of the cursor
-	// 2. Update the line index
-	copy(buffer.buffer[buffer.cursorIdx()+1:], buffer.buffer[buffer.cursorIdx():])
-	buffer.buffer[buffer.cursorIdx()] = char
-	buffer.len++
+func (b Buffer) Point() int {
+	return b.point
 }
 
-func (buffer *Buffer) InsertRune(char rune) {
-	buffer.insertRune(char)
-
-	// Update the line index
-	for i := buffer.cursorLine + 1; i < len(buffer.lineIndex); i++ {
-		buffer.lineIndex[i]++
+// line returns the line number for a given point in the buffer.
+func (b Buffer) line(p int) int {
+	if p < 0 || p >= len(b.buffer) {
+		panic(fmt.Sprintf("point out of range: %d", p))
 	}
 
-	// Update the cursor position
-	buffer.cursorCol++
+	if p == 0 {
+		return 0
+	}
+
+	// TODO: Use binary search for efficiency
+	for cl, idx := range b.lineIndex[:len(b.lineIndex)-1] {
+		nl := b.lineIndex[cl+1]
+		if p >= idx && p < nl {
+			return cl
+		}
+	}
+	return len(b.lineIndex) - 1 // Last line if point is beyond the last line index
 }
 
-func (b *Buffer) lineLen(n int) int {
-	if n < 0 || n >= len(b.lineIndex) {
-		panic(fmt.Sprintf("line index out of range: %d", n))
+// SetPoint sets the current point in the buffer to the specified index.
+// The point is placed before the character at the specified index.
+func (b *Buffer) SetPoint(idx int) bool {
+	if idx < 0 || idx > b.len {
+		return false
 	}
-
-	if n < len(b.lineIndex)-1 {
-		return b.lineIndex[n+1] - b.lineIndex[n]
-	}
-
-	return b.len - b.lineIndex[n]
+	b.point = idx
+	b.pointLine = b.line(idx)
+	return true
 }
 
-func (b *Buffer) DeleteRune() bool {
+// MovePoint moves the current point by n positions.
+// If n is positive, it moves forward; if negative, it moves backward.
+func (b *Buffer) MovePoint(n int) bool {
+	newPoint := b.point + n
+	if newPoint < 0 || newPoint > b.len {
+		return false
+	}
+	b.SetPoint(newPoint)
+	return true
+}
 
-	if b.cursorIdx() < 1 {
+// insertRunes inserts a slice of runes starting at the specified virtual point p without updating
+// the internal point.
+// It returns true if the insertion was successful, along the position and line where p ended up.
+// insertRunes does not update the point position.
+func (b *Buffer) insertRunes(p int, char []rune) (bool, int, int) {
+
+	if p < 0 || p > b.len {
+		return false, 0, 0
+	}
+
+	nchar := len(char)
+
+	if b.len+nchar > len(b.buffer) {
+		l := len(b.buffer)
+		if l == 0 {
+			l = initialBufferSize
+		}
+
+		newbuf := make([]rune, l*2)
+		copy(newbuf, b.buffer[:b.len])
+		b.buffer = newbuf
+	}
+
+	copy(b.buffer[p+nchar:], b.buffer[p:])
+	copy(b.buffer[p:], char)
+
+	pl := b.line(p)
+	for p < p+nchar {
+		c := b.buffer[p]
+
+		if c == lineEndingRune {
+			b.lineIndex = append(b.lineIndex, 0)
+			if pl < len(b.lineIndex)-2 {
+				copy(b.lineIndex[pl+2:], b.lineIndex[pl+1:])
+			}
+			b.lineIndex[pl+1] = p + 1
+			pl++
+		}
+		p++
+	}
+
+	b.len += nchar
+
+	return true, p, pl
+}
+
+func (b *Buffer) InsertRunes(char []rune) bool {
+
+	ok, newPoint, newPointLine := b.insertRunes(b.point, char)
+	if !ok {
 		return false
 	}
 
-	// 1. Shift characters to the right of the cursor by 1 position
-	// 2. Decrement line indexes of the lines after the cursor by one
-	b.buffer[b.cursorIdx()] = 0 // Clear the character at the cursor position
-	copy(b.buffer[b.cursorIdx()-1:], b.buffer[b.cursorIdx():])
-	b.len--
-
-	if b.cursorCol > 0 {
-		b.cursorCol--
-		for i := b.cursorLine + 1; i < len(b.lineIndex); i++ {
-			b.lineIndex[i]--
-		}
-	} else if b.cursorLine > 0 {
-		// Delete the deleted line from the line index
-		copy(b.lineIndex[b.cursorLine:], b.lineIndex[b.cursorLine+1:])
-		b.lineIndex = b.lineIndex[:len(b.lineIndex)-1]
-
-		b.cursorLine--
-		for i := b.cursorLine + 1; i < len(b.lineIndex); i++ {
-			b.lineIndex[i]--
-		}
-
-		b.cursorCol = b.lineLen(b.cursorLine)
-
-	}
+	b.point = newPoint
+	b.pointLine = newPointLine
 
 	return true
-
 }
 
-// NewLine inserts a new line at the cursor position and move the cursor to the left one position.
-func (b *Buffer) NewLine() {
-	b.insertRune(lineEndingRune)
-
-	b.lineIndex = append(b.lineIndex, 0)
-	copy(b.lineIndex[b.cursorLine+2:], b.lineIndex[b.cursorLine:])
-	b.lineIndex[b.cursorLine+1] = b.lookupRCIdx(b.cursorLine, b.cursorCol) + 1
-
-	b.cursorLine++
-	for i := b.cursorLine + 1; i < len(b.lineIndex); i++ {
-		b.lineIndex[i]++
+// deleteRunes deletes n runes starting at the specified position p without moving the internal point.
+// It returns true if the deletion was successful, along with the new point and line.
+func (b *Buffer) deleteRunes(p int, n int) (bool, int, int) {
+	if n <= 0 || p-n < 0 {
+		return false, 0, 0
 	}
 
-	b.cursorCol = 0
-
-}
-
-func (buffer *Buffer) Runes() iter.Seq[rune] {
-	return func(yield func(rune) bool) {
-		for _, r := range buffer.buffer {
-			if !yield(r) {
-				return
-			}
+	lineToDelete := 0
+	for i := p - 1; i > p-n-1; i-- {
+		if b.buffer[i] == lineEndingRune {
+			lineToDelete++
 		}
 	}
+
+	pl := b.line(p)
+	if lineToDelete > 0 {
+		copy(b.lineIndex[pl-lineToDelete:], b.lineIndex[pl+1:])
+		b.lineIndex = b.lineIndex[:len(b.lineIndex)-lineToDelete]
+		for i := pl - lineToDelete + 1; i < len(b.lineIndex); i++ {
+			b.lineIndex[i] -= n
+		}
+	}
+
+	copy(b.buffer[p-n:], b.buffer[p:])
+	b.len -= n
+
+	return true, p - n, pl - lineToDelete
 }
 
-func (buffer *Buffer) CursorPosition() (row, col int) {
-	return buffer.cursorLine, buffer.cursorCol
+func (b *Buffer) DeleteRunes(n int) bool {
+	ok, newPoint, newPointLine := b.deleteRunes(b.point, n)
+	if !ok {
+		return false
+	}
+
+	b.point = newPoint
+	b.pointLine = newPointLine
+
+	return true
+}
+
+func (b *Buffer) Len() int {
+	return b.len
+}
+
+func (b *Buffer) String() string {
+	if b.len == 0 {
+		return ""
+	}
+	return string(b.buffer[:b.len])
+}
+
+func (b *Buffer) LineCount() int {
+	return len(b.lineIndex)
+}
+
+// Size returns the size of the buffer content is bytes.
+func (b *Buffer) Size() int {
+	return len(string(b.buffer[:b.len]))
 }
