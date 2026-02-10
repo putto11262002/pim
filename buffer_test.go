@@ -257,4 +257,3 @@ func TestBuffer_deleteRunes(t *testing.T) {
 		})
 	}
 }
-
